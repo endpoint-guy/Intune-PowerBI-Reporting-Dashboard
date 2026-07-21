@@ -1,0 +1,14 @@
+[
+  {
+    "ReleaseType": "Out-of-band",
+    "Count": 120
+  },
+  {
+    "ReleaseType": "Preview",
+    "Count": 263
+  },
+  {
+    "ReleaseType": "Standard",
+    "Count": 1077
+  }
+]
