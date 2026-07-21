@@ -50,9 +50,15 @@ function Get-ProductName {
     )
 
     switch ([string]$MajorVersion) {
-        "11" { return "Windows 11" }
-        "10" { return "Windows 10" }
-        default { return "Windows Server" }
+        "11" {
+            return "Windows 11"
+        }
+        "10" {
+            return "Windows 10"
+        }
+        default {
+            return "Windows Server"
+        }
     }
 }
 
@@ -169,12 +175,12 @@ $AllUpdates = @(
 $AllUpdates = @(
     $AllUpdates |
         Where-Object {
-            -not :IsNullOrWhiteSpace($_.KB) -and
-            -not :IsNullOrWhiteSpace($_.Build) -and
-            -not :IsNullOrWhiteSpace($_.FullVersion) -and
-            $null -ne $_.BuildBranch -and
-            $null -ne $_.UBR -and
-            $null -ne $_.ReleaseDateSort
+            (-not :IsNullOrWhiteSpace($_.KB)) -and
+            (-not :IsNullOrWhiteSpace($_.Build)) -and
+            (-not :IsNullOrWhiteSpace($_.FullVersion)) -and
+            ($null -ne $_.BuildBranch) -and
+            ($null -ne $_.UBR) -and
+            ($null -ne $_.ReleaseDateSort)
         } |
         Sort-Object OSType, Product, Version, BuildBranch, UBR, ReleaseDateSort -Unique
 )
@@ -253,8 +259,8 @@ Write-Host "Saved ClientWindowsUpdateCatalog.json"
 $LatestQualityUpdates = @(
     $ClientUpdates |
         Where-Object {
-            $_.IsExpired -eq $false -and
-            $_.ReleaseType -notmatch "Preview"
+            ($_.IsExpired -eq $false) -and
+            ($_.ReleaseType -notmatch "Preview")
         } |
         Group-Object Product, Version, BuildBranch |
         ForEach-Object {
