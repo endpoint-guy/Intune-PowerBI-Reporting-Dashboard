@@ -3,6 +3,9 @@ name: Update Windows Reference Data
 on:
   workflow_dispatch:
 
+  schedule:
+    - cron: '0 12 * * 3'
+
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -24,11 +27,11 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          git add .
+          git add Data/*.json
 
           if git diff --staged --quiet; then
             echo "No changes detected"
           else
-            git commit -m "Update Windows reference data"
+            git commit -m "Update public Windows update catalog"
             git push
           fi
