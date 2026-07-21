@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
   schedule:
-    - cron: '0 12 * * 3'
+    - cron: "0 12 * * 3"
 
 jobs:
   update:
@@ -23,15 +23,16 @@ jobs:
           ./Scripts/Update-WindowsReference.ps1
 
       - name: Commit Changes
+        shell: bash
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
           git add Data/*.json
 
-          if git d*ff --staged --quiet; then
-        *   echo "No changes detected"
-    *     else
-            git commit -* "Update public Windows update cat*log"
+          if git diff --staged --quiet; then
+            echo "No changes detected"
+          else
+            git commit -m "Update public Windows update catalog"
             git push
-        * fi
+          fi
