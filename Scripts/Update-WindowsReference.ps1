@@ -7,9 +7,28 @@ if (-not (Test-Path -Path $DataPath)) {
     New-Item -Path $DataPath -ItemType Directory -Force | Out-Null
 }
 
+function Test-StringHasValue {
+    param(
+        [object]$Value
+    )
+
+    if ($null -eq $Value) {
+        return $false
+    }
+
+    $StringValue = "$Value"
+
+    if ($StringValue.Trim().Length -eq 0) {
+        return $false
+    }
+
+    return $true
+}
+
 function Save-JsonArray {
     param(
         [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
         [object[]]$InputObject,
 
         [Parameter(Mandatory = $true)]
@@ -20,12 +39,12 @@ function Save-JsonArray {
 
     if ($null -eq $InputObject -or $InputObject.Count -eq 0) {
         "[]" | Set-Content -Path $Path -Encoding UTF8
+        return
     }
-    else {
-        $InputObject |
-            ConvertTo-Json -Depth $Depth -AsArray |
-            Set-Content -Path $Path -Encoding UTF8
-    }
+
+    $InputObject |
+        ConvertTo-Json -Depth $Depth -AsArray |
+        Set-Content -Path $Path -Encoding UTF8
 }
 
 function Save-JsonObject {
@@ -49,17 +68,17 @@ function Get-ProductName {
         [object]$MajorVersion
     )
 
-    switch ([string]$MajorVersion) {
-        "11" {
-            return "Windows 11"
-        }
-        "10" {
-            return "Windows 10"
-        }
-        default {
-            return "Windows Server"
-        }
+    $MajorVersionText = "$MajorVersion"
+
+    if ($MajorVersionText -eq "11") {
+        return "Windows 11"
     }
+
+    if ($MajorVersionText -eq "10") {
+        return "Windows 10"
+    }
+
+    return "Windows Server"
 }
 
 function Convert-ToBooleanSafe {
@@ -71,12 +90,17 @@ function Convert-ToBooleanSafe {
         return $false
     }
 
-    try {
-        return [System.Convert]::ToBoolean($Value)
+    if ($Value -is [bool]) {
+        return $Value
     }
-    catch {
-        return $false
+
+    $StringValue = "$Value".Trim().ToLowerInvariant()
+
+    if ($StringValue -eq "true" -or $StringValue -eq "1" -or $StringValue -eq "yes") {
+        return $true
     }
+
+    return $false
 }
 
 function Convert-ToDateTimeSafe {
@@ -84,22 +108,20 @@ function Convert-ToDateTimeSafe {
         [object]$Value
     )
 
-    if ($null -eq $Value) {
+    if (-not (Test-StringHasValue -Value $Value)) {
         return $null
     }
 
-    $StringValue = [string]$Value
-
-    if (:IsNullOrWhiteSpace($StringValue)) {
-        return $null
-    }
+    $Result = $null
 
     try {
-        return [datetime]$StringValue
+        $Result = Get-Date -Date "$Value"
     }
     catch {
-        return $null
+        $Result = $null
     }
+
+    return $Result
 }
 
 Write-Host "Downloading Windows Update history from public API..."
@@ -127,11 +149,11 @@ $GeneratedUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
 $AllUpdates = @(
     foreach ($Update in $ApiRecords) {
-        $OSBuildValue = [string]$Update.OSBuild
+        $OSBuildValue = "$($Update.OSBuild)"
         $BuildBranch = $null
         $UBR = $null
 
-        if (-not :IsNullOrWhiteSpace($OSBuildValue)) {
+        if (Test-StringHasValue -Value $OSBuildValue) {
             $BuildParts = $OSBuildValue -split "\."
 
             if ($BuildParts.Count -eq 2) {
@@ -150,21 +172,27 @@ $AllUpdates = @(
         $IsExpiredValue = Convert-ToBooleanSafe -Value $Update.IsExpired
         $ProductName = Get-ProductName -MajorVersion $Update.MajorVersion
 
+        $ReleaseDateString = $null
+
+        if ($null -ne $ReleaseDateValue) {
+            $ReleaseDateString = $ReleaseDateValue.ToString("yyyy-MM-dd")
+        }
+
         [PSCustomObject]@{
-            OSType          = [string]$Update.OSType
+            OSType          = "$($Update.OSType)"
             Product         = $ProductName
             MajorVersion    = $Update.MajorVersion
-            Version         = [string]$Update.WindowsVersion
-            KB              = [string]$Update.KBNumber
-            Build           = [string]$Update.OSBuild
-            FullVersion     = [string]$Update.FullVersion
+            Version         = "$($Update.WindowsVersion)"
+            KB              = "$($Update.KBNumber)"
+            Build           = "$($Update.OSBuild)"
+            FullVersion     = "$($Update.FullVersion)"
             BuildBranch     = $BuildBranch
             UBR             = $UBR
-            ReleaseDate     = if ($null -ne $ReleaseDateValue) { $ReleaseDateValue.ToString("yyyy-MM-dd") } else { $null }
+            ReleaseDate     = $ReleaseDateString
             ReleaseDateSort = $ReleaseDateValue
-            ReleaseType     = [string]$Update.ReleaseType
+            ReleaseType     = "$($Update.ReleaseType)"
             IsExpired       = $IsExpiredValue
-            ArticleUrl      = [string]$Update.ArticleUrl
+            ArticleUrl      = "$($Update.ArticleUrl)"
             Source          = "DataForNerds"
             SourceUrl       = $SourceUrl
             GeneratedUtc    = $GeneratedUtc
@@ -175,9 +203,9 @@ $AllUpdates = @(
 $AllUpdates = @(
     $AllUpdates |
         Where-Object {
-            (-not :IsNullOrWhiteSpace($_.KB)) -and
-            (-not :IsNullOrWhiteSpace($_.Build)) -and
-            (-not :IsNullOrWhiteSpace($_.FullVersion)) -and
+            (Test-StringHasValue -Value $_.KB) -and
+            (Test-StringHasValue -Value $_.Build) -and
+            (Test-StringHasValue -Value $_.FullVersion) -and
             ($null -ne $_.BuildBranch) -and
             ($null -ne $_.UBR) -and
             ($null -ne $_.ReleaseDateSort)
@@ -237,10 +265,7 @@ $WindowsUpdateCatalog = @(
         Select-Object -Property $ExportProperties
 )
 
-Save-JsonArray `
-    -InputObject $WindowsUpdateCatalog `
-    -Path "$DataPath/WindowsUpdateCatalog.json" `
-    -Depth 10
+Save-JsonArray -InputObject $WindowsUpdateCatalog -Path "$DataPath/WindowsUpdateCatalog.json" -Depth 10
 
 Write-Host "Saved WindowsUpdateCatalog.json"
 
@@ -249,10 +274,7 @@ $ClientWindowsUpdateCatalog = @(
         Select-Object -Property $ExportProperties
 )
 
-Save-JsonArray `
-    -InputObject $ClientWindowsUpdateCatalog `
-    -Path "$DataPath/ClientWindowsUpdateCatalog.json" `
-    -Depth 10
+Save-JsonArray -InputObject $ClientWindowsUpdateCatalog -Path "$DataPath/ClientWindowsUpdateCatalog.json" -Depth 10
 
 Write-Host "Saved ClientWindowsUpdateCatalog.json"
 
@@ -272,10 +294,7 @@ $LatestQualityUpdates = @(
         Select-Object -Property $ExportProperties
 )
 
-Save-JsonArray `
-    -InputObject $LatestQualityUpdates `
-    -Path "$DataPath/LatestQualityUpdates.json" `
-    -Depth 10
+Save-JsonArray -InputObject $LatestQualityUpdates -Path "$DataPath/LatestQualityUpdates.json" -Depth 10
 
 Write-Host "Saved LatestQualityUpdates.json"
 Write-Host "Latest quality update records: $($LatestQualityUpdates.Count)"
@@ -289,10 +308,7 @@ $PreviewUpdates = @(
         Select-Object -Property $ExportProperties
 )
 
-Save-JsonArray `
-    -InputObject $PreviewUpdates `
-    -Path "$DataPath/PreviewUpdates.json" `
-    -Depth 10
+Save-JsonArray -InputObject $PreviewUpdates -Path "$DataPath/PreviewUpdates.json" -Depth 10
 
 Write-Host "Saved PreviewUpdates.json"
 Write-Host "Preview update records: $($PreviewUpdates.Count)"
@@ -309,14 +325,35 @@ $ReleaseTypeSummary = @(
         Sort-Object ReleaseType
 )
 
-Save-JsonArray `
-    -InputObject $ReleaseTypeSummary `
-    -Path "$DataPath/ReleaseTypeSummary.json" `
-    -Depth 5
+Save-JsonArray -InputObject $ReleaseTypeSummary -Path "$DataPath/ReleaseTypeSummary.json" -Depth 5
 
 Write-Host "Saved ReleaseTypeSummary.json"
 
 $Metadata = $Response.metadata
+
+$ApiProvider = $null
+$ApiVersion = $null
+$ApiDataset = $null
+$ApiLastModified = $null
+$ApiLastCollected = $null
+
+if ($null -ne $Metadata) {
+    $ApiProvider = "$($Metadata.provider)"
+    $ApiVersion = "$($Metadata.apiVersion)"
+    $ApiDataset = "$($Metadata.dataset)"
+    $ApiLastModified = "$($Metadata.lastModified)"
+    $ApiLastCollected = "$($Metadata.lastCollected)"
+}
+
+$NewestReleaseDate = $null
+$NewestKB = $null
+$NewestFullVersion = $null
+
+if ($null -ne $NewestClientUpdate) {
+    $NewestReleaseDate = $NewestClientUpdate.ReleaseDate
+    $NewestKB = $NewestClientUpdate.KB
+    $NewestFullVersion = $NewestClientUpdate.FullVersion
+}
 
 $SourceInfo = [PSCustomObject]@{
     Name                     = "DataForNerds Windows Update History"
@@ -327,21 +364,18 @@ $SourceInfo = [PSCustomObject]@{
     ClientRecordCount        = $ClientUpdates.Count
     LatestQualityRecordCount = $LatestQualityUpdates.Count
     PreviewRecordCount       = $PreviewUpdates.Count
-    NewestReleaseDate        = if ($null -ne $NewestClientUpdate) { $NewestClientUpdate.ReleaseDate } else { $null }
-    NewestKB                 = if ($null -ne $NewestClientUpdate) { $NewestClientUpdate.KB } else { $null }
-    NewestFullVersion        = if ($null -ne $NewestClientUpdate) { $NewestClientUpdate.FullVersion } else { $null }
-    ApiProvider              = if ($null -ne $Metadata) { $Metadata.provider } else { $null }
-    ApiVersion               = if ($null -ne $Metadata) { $Metadata.apiVersion } else { $null }
-    ApiDataset               = if ($null -ne $Metadata) { $Metadata.dataset } else { $null }
-    ApiLastModified          = if ($null -ne $Metadata) { $Metadata.lastModified } else { $null }
-    ApiLastCollected         = if ($null -ne $Metadata) { $Metadata.lastCollected } else { $null }
+    NewestReleaseDate        = $NewestReleaseDate
+    NewestKB                 = $NewestKB
+    NewestFullVersion        = $NewestFullVersion
+    ApiProvider              = $ApiProvider
+    ApiVersion               = $ApiVersion
+    ApiDataset               = $ApiDataset
+    ApiLastModified          = $ApiLastModified
+    ApiLastCollected         = $ApiLastCollected
     Description              = "Public Windows update reference data used for Power BI reporting."
 }
 
-Save-JsonObject `
-    -InputObject $SourceInfo `
-    -Path "$DataPath/UpdateSources.json" `
-    -Depth 10
+Save-JsonObject -InputObject $SourceInfo -Path "$DataPath/UpdateSources.json" -Depth 10
 
 Write-Host "Saved UpdateSources.json"
 
